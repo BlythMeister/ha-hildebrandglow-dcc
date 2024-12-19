@@ -262,7 +262,7 @@ class Usage(SensorEntity):
     _attr_has_entity_name = True
     _attr_name = "Usage (today)"
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(self, hass: HomeAssistant, resource, virtual_entity) -> None:
         """Initialize the sensor."""
@@ -311,7 +311,7 @@ class Cost(SensorEntity):
     _attr_has_entity_name = True
     _attr_name = "Cost (today)"
     _attr_native_unit_of_measurement = "GBP"
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(self, hass: HomeAssistant, resource, virtual_entity) -> None:
         """Initialize the sensor."""
