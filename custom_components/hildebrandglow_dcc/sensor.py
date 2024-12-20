@@ -280,13 +280,15 @@ class Usage(SensorEntity):
 
     async def async_update(self) -> None:
         """Fetch new data for the sensor."""
+        dt = datetime.now()
+        ts = datetime.timestamp(dt)
         # Get data on initial startup
         if not self.initialised:
             value = await daily_data(self.hass, self.resource)
             self._attr_native_value = round(value, 3)
             self.initialised = True
-        else:
-            ts = time.time()
+            self.lastUpdate = ts
+        else:            
             if (self.lastUpdate + 900) < ts:
                 value = await daily_data(self.hass, self.resource)
                 self._attr_native_value = round(value, 3)
@@ -326,15 +328,17 @@ class Cost(SensorEntity):
 
     async def async_update(self) -> None:
         """Fetch new data for the sensor."""
+        dt = datetime.now()
+        ts = datetime.timestamp(dt)
         if not self.initialised:
             value = await daily_data(self.hass, self.resource)
             self._attr_native_value = round(value / 100, 2)
             self.initialised = True
+            self.lastUpdate = ts
         else:
-            ts = time.time()
             if (self.lastUpdate + 900) < ts:
                 value = await daily_data(self.hass, self.resource)
-                self._attr_native_value = round(value / 100, 2)                
+                self._attr_native_value = round(value / 100, 2)
                 self.lastUpdate = ts
 
 
@@ -367,7 +371,8 @@ class TariffCoordinator(DataUpdateCoordinator):
             self.standing_initialised = True
             return await tariff_data(self.hass, self.resource)
 
-        ts = time.time()
+        dt = datetime.now()
+        ts = datetime.timestamp(dt)
         if (self.lastUpdate + 900) < ts:
             tariff = await tariff_data(self.hass, self.resource)
             self.lastUpdate = ts
