@@ -138,12 +138,11 @@ async def daily_data(hass: HomeAssistant, resource) -> float:
     # If it's before 00:45, we need to fetch yesterday's data
     if datetime.now().time() <= time(0, 45):
         _LOGGER.debug("Fetching yesterday's data")
-        today = datetime.now()
         yesterday = datetime.now() - timedelta(days=1)
         # Start of yesterday
         t_from = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-        # Start of today
-        t_to = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        # End of yesterday
+        t_to = yesterday.replace(hour=23, minute=59, second=0, microsecond=0)
     else:
         today = datetime.now()
         # Start of today
@@ -190,13 +189,6 @@ async def daily_data(hass: HomeAssistant, resource) -> float:
         if (not isinstance(v,float)):
            v= 0.0
            return v
-
-        if (resource.classifier == "electricity.consumption.cost" or resource.classifier == "gas.consumption.cost"):
-          if len(readings) > 1:
-                _LOGGER.debug("2nd cost reading %f:",readings[1][1].value)
-                v = readings[1][1].value
-          _LOGGER.debug("reading cost %f:",v)
-          return v
 
         if len(readings) > 1:
              _LOGGER.debug("2nd reading %f:",readings[1][1].value)
