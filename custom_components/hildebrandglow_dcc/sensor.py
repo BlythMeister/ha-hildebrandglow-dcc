@@ -132,15 +132,6 @@ def device_name(resource, virtual_entity) -> str:
         name = f"Smart {supply} meter"
     return name
 
-
-async def should_update() -> bool:
-    """Check if time is between 1-5 or 31-35 minutes past the hour."""
-    minutes = datetime.now().minute
-    if (1 <= minutes <= 5) or (31 <= minutes <= 35):
-        return True
-    return False
-
-
 async def daily_data(hass: HomeAssistant, resource) -> float:
     """Get daily usage from the API."""
     v = 0.0
@@ -276,6 +267,7 @@ class Usage(SensorEntity):
         self.initialised = False
         self.resource = resource
         self.virtual_entity = virtual_entity
+        self.lastUpdate = 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -302,10 +294,11 @@ class Usage(SensorEntity):
             self._attr_native_value = round(value, 3)
             self.initialised = True
         else:
-            # Only update the sensor if it's between 0-5 or 30-35 minutes past the hour
-            if await should_update():
+            ts = time.time()
+            if (self.lastUpdate + 900) < ts:
                 value = await daily_data(self.hass, self.resource)
                 self._attr_native_value = round(value, 3)
+                self.lastUpdate = ts
 
 
 class Cost(SensorEntity):
@@ -326,6 +319,7 @@ class Cost(SensorEntity):
         self.meter = None
         self.resource = resource
         self.virtual_entity = virtual_entity
+        self.lastUpdate = 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -345,10 +339,11 @@ class Cost(SensorEntity):
             self._attr_native_value = round(value / 100, 2)
             self.initialised = True
         else:
-            # Only update the sensor if it's between 0-5 or 30-35 minutes past the hour
-            if await should_update():
+            ts = time.time()
+            if (self.lastUpdate + 900) < ts:
                 value = await daily_data(self.hass, self.resource)
-                self._attr_native_value = round(value / 100, 2)
+                self._attr_native_value = round(value / 100, 2)                
+                self.lastUpdate = ts
 
 
 class TariffCoordinator(DataUpdateCoordinator):
@@ -368,6 +363,7 @@ class TariffCoordinator(DataUpdateCoordinator):
         self.rate_initialised = False
         self.standing_initialised = False
         self.resource = resource
+        self.lastUpdate = 0
 
     async def _async_update_data(self):
         """Fetch data from tariff API endpoint."""
@@ -378,9 +374,11 @@ class TariffCoordinator(DataUpdateCoordinator):
                 return await tariff_data(self.hass, self.resource)
             self.standing_initialised = True
             return await tariff_data(self.hass, self.resource)
-        # Only poll when updated data might be available
-        if await should_update():
+
+        ts = time.time()
+        if (self.lastUpdate + 900) < ts:
             tariff = await tariff_data(self.hass, self.resource)
+            self.lastUpdate = ts
             return tariff
 
 
