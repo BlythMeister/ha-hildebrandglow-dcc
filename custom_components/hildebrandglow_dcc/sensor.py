@@ -144,17 +144,21 @@ async def should_update() -> bool:
 async def daily_data(hass: HomeAssistant, resource) -> float:
     """Get daily usage from the API."""
     v = 0.0
-    # If it's before 01:06, we need to fetch yesterday's data
-    # Should only need to be before 00:36 but gas data can be 30 minutes behind electricity data
-    if datetime.now().time() <= time(1, 5):
+    # If it's before 00:45, we need to fetch yesterday's data
+    if datetime.now().time() <= time(0, 45):
         _LOGGER.debug("Fetching yesterday's data")
-        now = datetime.now() - timedelta(days=1)
+        today = datetime.now()
+        yesterday = datetime.now() - timedelta(days=1)
+        # Start of yesterday
+        t_from = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Start of today
+        t_to = today.replace(hour=0, minute=0, second=0, microsecond=0)
     else:
-        now = datetime.now()
-    # Round to the day to set time to 00:00:00
-    t_from = await hass.async_add_executor_job(resource.round, now, "P1D")
-    # Round to the minute
-    t_to = await hass.async_add_executor_job(resource.round, now, "PT1M")
+        today = datetime.now()
+        # Start of today
+        t_from = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Remove seconds/microseconds
+        t_to = today.replace(second=0, microsecond=0)
 
     # Tell Hildebrand to pull latest DCC data
     try:
