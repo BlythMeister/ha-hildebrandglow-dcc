@@ -189,7 +189,7 @@ async def daily_data(hass: HomeAssistant, resource) -> float:
         elif len(readings) > 0:
            v = readings[0][1].value
            _LOGGER.debug("using 1st reading %f:",v)
-        else
+        else:
            v= 0.0
            _LOGGER.debug("no readings, using 0.0:")
 
