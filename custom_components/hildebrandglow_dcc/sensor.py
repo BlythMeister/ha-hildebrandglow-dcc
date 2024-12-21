@@ -136,13 +136,14 @@ async def daily_data(hass: HomeAssistant, resource) -> float:
     """Get daily usage from the API."""
     v = 0.0
     # If it's before 00:45, we need to fetch yesterday's data
-    if datetime.now().time() <= time(0, 45):
-        _LOGGER.debug("Fetching yesterday's data")
-        yesterday = datetime.now() - timedelta(days=1)
+    if datetime.now().time() <= time(3, 0):
+        _LOGGER.debug("Fetching including yesterday's data until 3am")
+        today = datetime.now()
+        yesterday = today - timedelta(days=1)
         # Start of yesterday
         t_from = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
         # End of yesterday
-        t_to = yesterday.replace(hour=23, minute=59, second=0, microsecond=0)
+        t_to = today.replace(second=0, microsecond=0)
     else:
         today = datetime.now()
         # Start of today
@@ -182,18 +183,20 @@ async def daily_data(hass: HomeAssistant, resource) -> float:
             "Readings for %s has %s entries ", resource.classifier, len(readings),
         )
 
-        
-        v = readings[0][1].value
-        _LOGGER.debug("1st reading %f:",v)
+        if len(readings) > 1:
+           v = readings[1][1].value
+           _LOGGER.debug("using 2nd reading %f:",v)
+        elif len(readings) > 0:
+           v = readings[0][1].value
+           _LOGGER.debug("using 1st reading %f:",v)
+        else
+           v= 0.0
+           _LOGGER.debug("no readings, using 0.0:")
 
         if (not isinstance(v,float)):
            v= 0.0
-           return v
-
-        if len(readings) > 1:
-             _LOGGER.debug("2nd reading %f:",readings[1][1].value)
-             v += readings[1][1].value
-        _LOGGER.debug("reading total %f:",v)
+           _LOGGER.debug("value invalid, using 0.0:")
+            
         return v
 
     except requests.Timeout as ex:
