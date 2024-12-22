@@ -252,7 +252,7 @@ class Usage(SensorEntity):
     _attr_has_entity_name = True
     _attr_name = "Usage (today)"
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(self, hass: HomeAssistant, resource, virtual_entity) -> None:
         """Initialize the sensor."""
@@ -263,6 +263,7 @@ class Usage(SensorEntity):
         self.resource = resource
         self.virtual_entity = virtual_entity
         self.lastUpdate = 0
+        self.lastValue = 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -291,12 +292,17 @@ class Usage(SensorEntity):
             self._attr_native_value = round(value, 3)
             self.initialised = True
             self.lastUpdate = ts
+            self.lastValue = value
         else:            
             if (self.lastUpdate + 900) < ts:
                 value = await daily_data(self.hass, self.resource)
-                self._attr_native_value = round(value, 3)
-                self.lastUpdate = ts
-
+                if value < self.lastValue:
+                    self._attr_native_value = 0
+                    self.lastValue = 0
+                else:
+                    self._attr_native_value = round(value, 3)
+                    self.lastUpdate = ts
+                    self.lastValue = value
 
 class Cost(SensorEntity):
     """Sensor usage for daily cost."""
@@ -305,7 +311,7 @@ class Cost(SensorEntity):
     _attr_has_entity_name = True
     _attr_name = "Cost (today)"
     _attr_native_unit_of_measurement = "GBP"
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(self, hass: HomeAssistant, resource, virtual_entity) -> None:
         """Initialize the sensor."""
@@ -317,6 +323,7 @@ class Cost(SensorEntity):
         self.resource = resource
         self.virtual_entity = virtual_entity
         self.lastUpdate = 0
+        self.lastValue = 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -338,12 +345,17 @@ class Cost(SensorEntity):
             self._attr_native_value = round(value / 100, 2)
             self.initialised = True
             self.lastUpdate = ts
+            self.lastValue = value
         else:
             if (self.lastUpdate + 900) < ts:
                 value = await daily_data(self.hass, self.resource)
-                self._attr_native_value = round(value / 100, 2)
-                self.lastUpdate = ts
-
+                if value < self.lastValue:
+                    self._attr_native_value = 0
+                    self.lastValue = 0
+                else:
+                    self._attr_native_value = round(value / 100, 2)
+                    self.lastUpdate = ts
+                    self.lastValue = value
 
 class TariffCoordinator(DataUpdateCoordinator):
     """Data update coordinator for the tariff sensors."""
