@@ -132,9 +132,9 @@ def device_name(resource, virtual_entity) -> str:
         name = f"Smart {supply} meter"
     return name
 
-async def daily_data(hass: HomeAssistant, resource) -> float:
+async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
     """Get daily usage from the API."""
-    v = 0.0
+    v = -1.0
     # If it's before 00:45, we need to fetch yesterday's data
     if datetime.now().time() <= time(3, 0):
         _LOGGER.debug("Fetching including yesterday's data until 3am")
@@ -194,7 +194,7 @@ async def daily_data(hass: HomeAssistant, resource) -> float:
            _LOGGER.debug("no readings, using 0.0:")
 
         if (not isinstance(v,float)):
-           v= 0.0
+           v= -1.0
            _LOGGER.debug("value invalid, using 0.0:")
             
         return v
@@ -211,8 +211,11 @@ async def daily_data(hass: HomeAssistant, resource) -> float:
             )
         else:
             _LOGGER.exception("Unexpected exception: %s. Please open an issue", ex)
-    return v
-
+    
+    if v < 0.0:
+        return lastValue
+    else:
+        return v
 
 async def tariff_data(hass: HomeAssistant, resource) -> float:
     """Get tariff data from the API."""
@@ -288,14 +291,14 @@ class Usage(SensorEntity):
         ts = datetime.timestamp(dt)
         # Get data on initial startup
         if not self.initialised:
-            value = await daily_data(self.hass, self.resource)
+            value = await daily_data(self.hass, self.resource, self.lastValue)
             self._attr_native_value = round(value, 3)
             self.initialised = True
             self.lastUpdate = ts
             self.lastValue = value
         else:            
             if (self.lastUpdate + 900) < ts:
-                value = await daily_data(self.hass, self.resource)
+                value = await daily_data(self.hass, self.resource, self.lastValue)
                 if value < self.lastValue:
                     self._attr_native_value = 0
                     self.lastValue = 0
@@ -341,14 +344,14 @@ class Cost(SensorEntity):
         dt = datetime.now()
         ts = datetime.timestamp(dt)
         if not self.initialised:
-            value = await daily_data(self.hass, self.resource)
+            value = await daily_data(self.hass, self.resource, self.lastValue)
             self._attr_native_value = round(value / 100, 2)
             self.initialised = True
             self.lastUpdate = ts
             self.lastValue = value
         else:
             if (self.lastUpdate + 900) < ts:
-                value = await daily_data(self.hass, self.resource)
+                value = await daily_data(self.hass, self.resource, self.lastValue)
                 if value < self.lastValue:
                     self._attr_native_value = 0
                     self.lastValue = 0
