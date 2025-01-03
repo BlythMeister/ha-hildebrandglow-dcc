@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, time, timedelta
 import logging
-
+import json
 import requests
 
 from homeassistant.components.sensor import (
@@ -142,7 +142,7 @@ def device_name(resource, virtual_entity) -> str:
 
 async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
     """Get daily reading from the API."""
-    v = -1.0
+    v = lastValue
     # If it's before 00:45, we need to fetch yesterday's data
     if datetime.now().time() <= time(3, 0):
         _LOGGER.debug("Fetching including yesterday's data until 3am")
@@ -187,9 +187,8 @@ async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
             resource.get_readings, t_from, t_to, "P1D", "sum", True
         )
         _LOGGER.debug("Successfully got daily reading for resource id %s", resource.id)
-        _LOGGER.debug(
-            "Readings for %s has %s entries ", resource.classifier, len(readings),
-        )
+        _LOGGER.debug("Readings for %s has %s entries", resource.classifier, len(readings))
+        _LOGGER.debug("raw data: %s", json.dumps(readings))
 
         if len(readings) > 1:
            v = readings[1][1].value
@@ -199,13 +198,11 @@ async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
            _LOGGER.debug("using 1st reading %f:",v)
         else:
            v= 0.0
-           _LOGGER.debug("no readings, using 0.0:")
+           _LOGGER.warning("no readings, using 0.0:")
 
         if (not isinstance(v,float)):
-           v= -1.0
-           _LOGGER.debug("value invalid, using 0.0:")
-            
-        return v
+          _LOGGER.error("value invalid, using last value %f:", lastValue)
+          v= lastValue
 
     except requests.Timeout as ex:
         _LOGGER.error("Timeout: %s", ex)
