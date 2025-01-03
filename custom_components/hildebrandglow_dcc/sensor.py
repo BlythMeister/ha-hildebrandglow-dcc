@@ -86,12 +86,14 @@ async def async_setup_entry(
             
         # Loop through all resources and create sensors
         for resource in resources:
-            if resource.classifier in ["electricity.consumption", "gas.consumption"]:
-                usage_sensor = Usage(hass, resource, virtual_entity)
-                entities.append(usage_sensor)
-                # Save the usage sensor as a meter so that the cost sensor can reference it
-                meters[resource.classifier] = usage_sensor
+            if resource.classifier in ["electricity.consumption", "electricity.export", "gas.consumption"]:
+                reading_sensor = Reading(hass, resource, virtual_entity)
+                entities.append(reading_sensor)
+                # Save the reading sensor as a meter so that the cost sensor can reference it
+                meters[resource.classifier] = reading_sensor
 
+        for resource in resources:
+            if resource.classifier in ["electricity.consumption", "gas.consumption"]:
                 # Standing and Rate sensors are handled by the coordinator
                 coordinator = TariffCoordinator(hass, resource)
                 standing_sensor = Standing(coordinator, resource, virtual_entity)
@@ -99,7 +101,7 @@ async def async_setup_entry(
                 rate_sensor = Rate(coordinator, resource, virtual_entity)
                 entities.append(rate_sensor)
 
-        # Cost sensors must be created after usage sensors as they reference them as a meter
+        # Cost sensors must be created after reading sensors as they reference them as a meter
         for resource in resources:
             if resource.classifier == "gas.consumption.cost":
                 cost_sensor = Cost(hass, resource, virtual_entity)
@@ -120,6 +122,8 @@ def supply_type(resource) -> str:
     """Return supply type."""
     if "electricity.consumption" in resource.classifier:
         return "electricity"
+    if "electricity.export" in resource.classifier:
+        return "electricity export"
     if "gas.consumption" in resource.classifier:
         return "gas"
     _LOGGER.error("Unknown classifier: %s. Please open an issue", resource.classifier)
@@ -137,7 +141,7 @@ def device_name(resource, virtual_entity) -> str:
     return name
 
 async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
-    """Get daily usage from the API."""
+    """Get daily reading from the API."""
     v = -1.0
     # If it's before 00:45, we need to fetch yesterday's data
     if datetime.now().time() <= time(3, 0):
@@ -182,7 +186,7 @@ async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
         readings = await hass.async_add_executor_job(
             resource.get_readings, t_from, t_to, "P1D", "sum", True
         )
-        _LOGGER.debug("Successfully got daily usage for resource id %s", resource.id)
+        _LOGGER.debug("Successfully got daily reading for resource id %s", resource.id)
         _LOGGER.debug(
             "Readings for %s has %s entries ", resource.classifier, len(readings),
         )
@@ -252,12 +256,12 @@ async def tariff_data(hass: HomeAssistant, resource) -> float:
     return None
 
 
-class Usage(SensorEntity):
-    """Sensor object for daily usage."""
+class Reading(SensorEntity):
+    """Sensor object for daily reading."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_has_entity_name = True
-    _attr_name = "Usage (today)"
+    _attr_name = "reading (today)"
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_state_class = SensorStateClass.TOTAL
 
@@ -285,9 +289,11 @@ class Usage(SensorEntity):
     @property
     def icon(self) -> str | None:
         """Icon to use in the frontend."""
-        # Only the gas usage sensor needs an icon as the others inherit from their device class
+        # Only the gas reading sensor needs an icon as the others inherit from their device class
         if self.resource.classifier == "gas.consumption":
             return "mdi:fire"
+        if self.resource.classifier == "electricity.export":
+            return "mdi:transmission-tower-export"
 
     async def async_update(self) -> None:
         """Fetch new data for the sensor."""
@@ -312,7 +318,7 @@ class Usage(SensorEntity):
                     self.lastValue = value
 
 class Cost(SensorEntity):
-    """Sensor usage for daily cost."""
+    """Sensor for daily cost."""
 
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_has_entity_name = True
