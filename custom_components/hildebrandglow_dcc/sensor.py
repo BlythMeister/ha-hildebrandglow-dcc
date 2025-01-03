@@ -80,6 +80,10 @@ async def async_setup_entry(
             else:
                 _LOGGER.exception("Unexpected exception: %s. Please open an issue", ex)
 
+        _LOGGER.info("Found %i resources:", len(resources))
+        for resource in resources:
+            _LOGGER.info(" - %s", resource.classifier)
+            
         # Loop through all resources and create sensors
         for resource in resources:
             if resource.classifier in ["electricity.consumption", "gas.consumption"]:
