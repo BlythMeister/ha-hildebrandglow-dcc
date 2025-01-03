@@ -5,6 +5,7 @@ from collections.abc import Callable
 from datetime import datetime, time, timedelta
 import logging
 import requests
+import pprint
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -187,7 +188,7 @@ async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
         )
         _LOGGER.debug("Successfully got daily reading for resource id %s", resource.id)
         _LOGGER.debug("Readings for %s has %s entries", resource.classifier, len(readings))
-        _LOGGER.debug("Raw data: %r", readings)
+        _LOGGER.debug("Raw data: %s", pprint.pformat(readings))
 
         if len(readings) > 1:
            v = readings[1][1].value
