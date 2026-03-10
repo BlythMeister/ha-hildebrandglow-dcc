@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 import logging
+from numbers import Number
 import requests
 
 from homeassistant.components.sensor import (
@@ -184,21 +185,12 @@ def device_name(resource, virtual_entity) -> str:
 async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
     """Get daily reading from the API."""
     v = lastValue
-    # If it's before 00:45, we need to fetch yesterday's data
-    if datetime.now().time() <= time(3, 0):
-        _LOGGER.debug("Fetching including yesterday's data until 3am")
-        today = datetime.now()
-        yesterday = today - timedelta(days=1)
-        # Start of yesterday
-        t_from = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-        # End of yesterday
-        t_to = today.replace(second=0, microsecond=0)
-    else:
-        today = datetime.now()
-        # Start of today
-        t_from = today.replace(hour=0, minute=0, second=0, microsecond=0)
-        # Remove seconds/microseconds
-        t_to = today.replace(second=0, microsecond=0)
+    # Glow often has no complete P1D bucket for the current day, so query from
+    # yesterday midnight to obtain the latest stable daily reading.
+    today = datetime.now()
+    yesterday = today - timedelta(days=1)
+    t_from = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+    t_to = today.replace(second=0, microsecond=0)
 
     # Tell Hildebrand to pull latest DCC data
     try:
@@ -231,20 +223,33 @@ async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
         _LOGGER.debug("Readings for %s has %s entries", resource.classifier, len(readings))
 
         if len(readings) > 1:
-           v = readings[1][1].value
-           _LOGGER.debug("using 2nd reading %r:",v)
-           _LOGGER.debug("Raw data: %s", str(readings[1][1]))
+            v = readings[1][1].value
+            _LOGGER.debug("Using 2nd reading %r", v)
+            _LOGGER.debug("Raw data: %s", str(readings[1][1]))
         elif len(readings) > 0:
-           v = readings[0][1].value
-           _LOGGER.debug("using 1st reading %r:",v)
-           _LOGGER.debug("Raw data: %s", str(readings[0][1]))
+            v = readings[0][1].value
+            _LOGGER.debug("Using 1st reading %r", v)
+            _LOGGER.debug("Raw data: %s", str(readings[0][1]))
         else:
-           v= 0.0
-           _LOGGER.warning("no readings, using 0.0:")
+            _LOGGER.warning(
+                "No readings for %s (id: %s), keeping last value %s",
+                resource.classifier,
+                resource.id,
+                lastValue,
+            )
+            v = lastValue
 
-        if (not isinstance(v,float)):
-          _LOGGER.error("value invalid, using last value %f:", lastValue)
-          v= lastValue
+        if not isinstance(v, Number):
+            _LOGGER.error(
+                "Value %r is not numeric for %s (id: %s), keeping last value %s",
+                v,
+                resource.classifier,
+                resource.id,
+                lastValue,
+            )
+            v = lastValue
+        else:
+            v = float(v)
 
     except requests.Timeout as ex:
         _LOGGER.error("Timeout: %s", ex)
