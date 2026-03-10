@@ -29,7 +29,7 @@ What version of the integration and what version of Home Assistant are you runni
 <!-- If you are not using the newest version, please download and try that before opening an issue -->
 
 **Debug log**
-Enable debug logging by following the instructions [here](https://github.com/HandyHat/ha-hildebrandglow-dcc#debugging)
+Enable debug logging by following the instructions [here](https://github.com/BlythMeister/ha-hildebrandglow-dcc#debugging)
 
 **Additional context**
 Add any other context about the problem here.
