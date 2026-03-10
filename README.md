@@ -12,13 +12,22 @@ The data provided will be delayed by around 30 minutes. To get real-time consump
 
 ### Automated installation through HACS
 
-You can install this component through [HACS](https://hacs.xyz/) to easily receive updates. Once HACS is installed, click this link:
+This fork is not included in the default HACS repository list, so you must add it as a custom repository first.
+
+1. In Home Assistant, open HACS.
+2. Open the menu in the top right and select `Custom repositories`.
+3. Add `https://github.com/BlythMeister/ha-hildebrandglow-dcc`.
+4. Set the category to `Integration`.
+5. Click `Add`.
+6. Search for `Hildebrand Glow (DCC)` in HACS and install it.
+
+You can also use this shortcut to add the custom repository:
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=BlythMeister&repository=ha-hildebrandglow-dcc)
 
 <details>
   <summary>Manually add to HACS</summary>
-  Visit the HACS Integrations pane and go to <i>Explore and download repositories</i>. Search for <code>Hildebrand Glow (DCC)</code>, and then hit <i>Download</i>. You'll then be able to install it through the <i>Integrations</i> pane.
+  Visit the HACS Integrations pane and go to <i>Custom repositories</i>. Add <code>https://github.com/BlythMeister/ha-hildebrandglow-dcc</code> as an <code>Integration</code>. Then go to <i>Explore and download repositories</i>, search for <code>Hildebrand Glow (DCC)</code>, and hit <i>Download</i>.
 </details>
 
 ### Manual installation
