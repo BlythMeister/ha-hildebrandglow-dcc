@@ -26,6 +26,32 @@ _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(minutes=5)
 
 
+def classifier_has(resource, token: str) -> bool:
+    """Return True when a resource classifier contains the expected token."""
+    return token in resource.classifier
+
+
+def is_reading_resource(resource) -> bool:
+    """Return True for reading resources (not cost resources)."""
+    return (
+        (
+            classifier_has(resource, "electricity.consumption")
+            or classifier_has(resource, "electricity.export")
+            or classifier_has(resource, "gas.consumption")
+        )
+        and not classifier_has(resource, ".cost")
+    )
+
+
+def cost_meter_key(resource) -> str | None:
+    """Map a cost resource to its corresponding reading meter key."""
+    if classifier_has(resource, "gas.consumption.cost"):
+        return "gas.consumption"
+    if classifier_has(resource, "electricity.consumption.cost"):
+        return "electricity.consumption"
+    return None
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: Callable
 ) -> bool:
@@ -85,14 +111,22 @@ async def async_setup_entry(
             
         # Loop through all resources and create sensors
         for resource in resources:
-            if resource.classifier in ["electricity.consumption", "electricity.export", "gas.consumption"]:
+            if is_reading_resource(resource):
                 reading_sensor = Reading(hass, resource, virtual_entity)
                 entities.append(reading_sensor)
                 # Save the reading sensor as a meter so that the cost sensor can reference it
-                meters[resource.classifier] = reading_sensor
+                if classifier_has(resource, "gas.consumption"):
+                    meters["gas.consumption"] = reading_sensor
+                elif classifier_has(resource, "electricity.consumption"):
+                    meters["electricity.consumption"] = reading_sensor
+                elif classifier_has(resource, "electricity.export"):
+                    meters["electricity.export"] = reading_sensor
 
         for resource in resources:
-            if resource.classifier in ["electricity.consumption", "gas.consumption"]:
+            if (
+                is_reading_resource(resource)
+                and not classifier_has(resource, "electricity.export")
+            ):
                 # Standing and Rate sensors are handled by the coordinator
                 coordinator = TariffCoordinator(hass, resource)
                 standing_sensor = Standing(coordinator, resource, virtual_entity)
@@ -102,14 +136,22 @@ async def async_setup_entry(
 
         # Cost sensors must be created after reading sensors as they reference them as a meter
         for resource in resources:
-            if resource.classifier == "gas.consumption.cost":
-                cost_sensor = Cost(hass, resource, virtual_entity)
-                cost_sensor.meter = meters["gas.consumption"]
-                entities.append(cost_sensor)
-            elif resource.classifier == "electricity.consumption.cost":
-                cost_sensor = Cost(hass, resource, virtual_entity)
-                cost_sensor.meter = meters["electricity.consumption"]
-                entities.append(cost_sensor)
+            meter_key = cost_meter_key(resource)
+            if meter_key is None:
+                continue
+
+            meter_sensor = meters.get(meter_key)
+            if meter_sensor is None:
+                _LOGGER.warning(
+                    "Skipping cost sensor for %s: missing linked meter %s",
+                    resource.classifier,
+                    meter_key,
+                )
+                continue
+
+            cost_sensor = Cost(hass, resource, virtual_entity)
+            cost_sensor.meter = meter_sensor
+            entities.append(cost_sensor)
 
     # Get data for all entities on initial startup
     async_add_entities(entities, update_before_add=True)
@@ -287,9 +329,9 @@ class Reading(SensorEntity):
     def icon(self) -> str | None:
         """Icon to use in the frontend."""
         # Only the gas reading sensor needs an icon as the others inherit from their device class
-        if self.resource.classifier == "gas.consumption":
+        if "gas.consumption" in self.resource.classifier:
             return "mdi:fire"
-        if self.resource.classifier == "electricity.export":
+        if "electricity.export" in self.resource.classifier:
             return "mdi:transmission-tower-export"
 
     async def async_update(self) -> None:
