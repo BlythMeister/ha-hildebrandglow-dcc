@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 import logging
 from numbers import Number
 import requests
@@ -185,12 +185,21 @@ def device_name(resource, virtual_entity) -> str:
 async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
     """Get daily reading from the API."""
     v = lastValue
-    # Glow often has no complete P1D bucket for the current day, so query from
-    # yesterday midnight to obtain the latest stable daily reading.
-    today = datetime.now()
-    yesterday = today - timedelta(days=1)
-    t_from = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-    t_to = today.replace(second=0, microsecond=0)
+    # If it's before 02:00, we need to fetch yesterday's data
+    if datetime.now().time() <= time(2, 0):
+        _LOGGER.debug("Fetching including yesterday's data until 2am")
+        today = datetime.now()
+        yesterday = today - timedelta(days=1)
+        # Start of yesterday
+        t_from = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+        # End of yesterday
+        t_to = today.replace(second=0, microsecond=0)
+    else:
+        today = datetime.now()
+        # Start of today
+        t_from = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Remove seconds/microseconds
+        t_to = today.replace(second=0, microsecond=0)
 
     # Tell Hildebrand to pull latest DCC data
     try:
