@@ -183,100 +183,65 @@ def device_name(resource, virtual_entity) -> str:
     return name
 
 async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
-    """Get daily reading from the API."""
+    """Get daily reading with support for extended data gaps."""
     v = lastValue
-    # If it's before 02:00, we need to fetch yesterday's data
-    if datetime.now().time() <= time(2, 0):
-        _LOGGER.debug("Fetching including yesterday's data until 2am")
-        today = datetime.now()
-        yesterday = today - timedelta(days=1)
-        # Start of yesterday
-        t_from = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-        # End of yesterday
-        t_to = today.replace(second=0, microsecond=0)
-    else:
-        today = datetime.now()
-        # Start of today
-        t_from = today.replace(hour=0, minute=0, second=0, microsecond=0)
-        # Remove seconds/microseconds
-        t_to = today.replace(second=0, microsecond=0)
-
-    # Tell Hildebrand to pull latest DCC data
+    now = datetime.now()
+    
+    # Time boundaries
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = now.replace(second=0, microsecond=0)
+    
+    # Attempt a catchup to wake up the DCC integration
     try:
         await hass.async_add_executor_job(resource.catchup)
-        _LOGGER.debug(
-            "Successful GET to https://api.glowmarkt.com/api/v0-1/resource/%s/catchup",
-            resource.id,
-        )
-    except requests.Timeout as ex:
-        _LOGGER.error("Timeout: %s", ex)
-    except requests.exceptions.ConnectionError as ex:
-        _LOGGER.error("Cannot connect: %s", ex)
-    # Can't use the RuntimeError exception from the library as it's not a subclass of Exception
-    except Exception as ex:  # pylint: disable=broad-except
-        if "Request failed" in str(ex):
-            _LOGGER.warning(
-                "Non-200 Status Code. The Glow API may be experiencing issues"
-            )
-        else:
-            _LOGGER.exception("Unexpected exception: %s. Please open an issue", ex)
+    except Exception as ex:
+        _LOGGER.warning("Catchup failed for %s: %s", resource.classifier, ex)
 
     try:
-        _LOGGER.debug(
-            "Get readings from %s to %s for %s", t_from, t_to, resource.classifier
+        # 1. Try to get Today's data
+        today_readings = await hass.async_add_executor_job(
+            resource.get_readings, today_start, today_end, "P1D", "sum", True
         )
-        readings = await hass.async_add_executor_job(
-            resource.get_readings, t_from, t_to, "P1D", "sum", True
-        )
-        _LOGGER.debug("Successfully got daily reading for resource id %s", resource.id)
-        _LOGGER.debug("Readings for %s has %s entries", resource.classifier, len(readings))
+        
+        today_v = 0.0
+        if len(today_readings) > 0:
+            today_v = float(today_readings[0][1].value)
 
-        if len(readings) > 1:
-            v = readings[1][1].value
-            _LOGGER.debug("Using 2nd reading %r", v)
-            _LOGGER.debug("Raw data: %s", str(readings[1][1]))
-        elif len(readings) > 0:
-            v = readings[0][1].value
-            _LOGGER.debug("Using 1st reading %r", v)
-            _LOGGER.debug("Raw data: %s", str(readings[0][1]))
-        else:
-            _LOGGER.warning(
-                "No readings for %s (id: %s), keeping last value %s",
-                resource.classifier,
-                resource.id,
-                lastValue,
+        # 2. Handle the "No Today Data" or "Gap" scenario
+        if today_v <= 0.0:
+            _LOGGER.debug("No today data for %s. Checking historical data.", resource.classifier)
+            
+            # Look back further (e.g., last 3 days) to find the most recent valid total
+            search_start = today_start - timedelta(days=3)
+            historical_readings = await hass.async_add_executor_job(
+                resource.get_readings, search_start, today_start, "P1D", "sum", True
             )
-            v = lastValue
 
-        if not isinstance(v, Number):
-            _LOGGER.error(
-                "Value %r is not numeric for %s (id: %s), keeping last value %s",
-                v,
-                resource.classifier,
-                resource.id,
-                lastValue,
-            )
-            v = lastValue
+            if historical_readings:
+                # Get the latest non-zero reading from the historical list
+                # historical_readings is usually ordered [day-3, day-2, day-1]
+                valid_historical = [r for r in historical_readings if float(r[1].value) > 0]
+                if valid_historical:
+                    # Take the most recent day that had data
+                    v = float(valid_historical[-1][1].value)
+                    _LOGGER.debug("Found historical data for %s: %s", resource.classifier, v)
+                else:
+                    v = lastValue
+            else:
+                v = lastValue
         else:
-            v = float(v)
+            # We have fresh data for today
+            v = today_v
 
-    except requests.Timeout as ex:
-        _LOGGER.error("Timeout: %s", ex)
-    except requests.exceptions.ConnectionError as ex:
-        _LOGGER.error("Cannot connect: %s", ex)
-    # Can't use the RuntimeError exception from the library as it's not a subclass of Exception
-    except Exception as ex:  # pylint: disable=broad-except
-        if "Request failed" in str(ex):
-            _LOGGER.warning(
-                "Non-200 Status Code. The Glow API may be experiencing issues"
-            )
-        else:
-            _LOGGER.exception("Unexpected exception: %s. Please open an issue", ex)
-    
-    if v < 0.0:
+        # Final Type/Value Check
+        if not isinstance(v, (int, float)) or v < 0.0:
+            return lastValue
+        
+        return float(v)
+
+    except Exception as ex:
+        _LOGGER.error("Error updating %s: %s", resource.classifier, ex)
         return lastValue
-    else:
-        return v
 
 async def tariff_data(hass: HomeAssistant, resource) -> float:
     """Get tariff data from the API."""
