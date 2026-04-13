@@ -187,8 +187,8 @@ def latest_positive_reading_before_date(readings, target_date) -> float | None:
     return prior_values[-1]
 
 
-async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
-    """Get the current local-day reading, falling back to the latest prior day with data."""
+async def daily_data(hass: HomeAssistant, resource, lastValue) -> tuple[float, bool]:
+    """Get the current local-day reading and whether it comes from a local-today bucket."""
     v = lastValue
     now = datetime.now()
 
@@ -219,14 +219,19 @@ async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
             )
             historical_v = latest_positive_reading_before_date(historical, today_date)
             v = historical_v if historical_v is not None else lastValue
+            is_today_value = False
         else:
             v = today_v
+            is_today_value = True
 
-        return float(v) if isinstance(v, Number) and v >= 0 else lastValue
+        if not isinstance(v, Number) or v < 0:
+            return lastValue, False
+
+        return float(v), is_today_value
 
     except Exception as ex:
         _LOGGER.error("Error updating %s: %s", resource.classifier, ex)
-        return lastValue
+        return lastValue, False
 
 
 async def tariff_data(hass: HomeAssistant, resource) -> float:
@@ -277,8 +282,10 @@ class Reading(SensorEntity):
         dt = datetime.now()
         ts = datetime.timestamp(dt)
         if not self.initialised or (self.lastUpdate + 900) < ts:
-            value = await daily_data(self.hass, self.resource, self.lastValue)
-            if self.initialised and value < self.lastValue:
+            value, is_today_value = await daily_data(
+                self.hass, self.resource, self.lastValue
+            )
+            if self.initialised and value < self.lastValue and not is_today_value:
                 self._attr_native_value = 0
                 self.lastValue = 0
             else:
@@ -320,8 +327,10 @@ class Cost(SensorEntity):
         dt = datetime.now()
         ts = datetime.timestamp(dt)
         if not self.initialised or (self.lastUpdate + 900) < ts:
-            value = await daily_data(self.hass, self.resource, self.lastValue)
-            if self.initialised and value < self.lastValue:
+            value, is_today_value = await daily_data(
+                self.hass, self.resource, self.lastValue
+            )
+            if self.initialised and value < self.lastValue and not is_today_value:
                 self._attr_native_value = 0
                 self.lastValue = 0
             else:
