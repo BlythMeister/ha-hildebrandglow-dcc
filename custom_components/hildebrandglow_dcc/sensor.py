@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 import logging
 from numbers import Number
-import requests
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -35,13 +34,10 @@ def classifier_has(resource, token: str) -> bool:
 def is_reading_resource(resource) -> bool:
     """Return True for reading resources (not cost resources)."""
     return (
-        (
-            classifier_has(resource, "electricity.consumption")
-            or classifier_has(resource, "electricity.export")
-            or classifier_has(resource, "gas.consumption")
-        )
-        and not classifier_has(resource, ".cost")
-    )
+        classifier_has(resource, "electricity.consumption")
+        or classifier_has(resource, "electricity.export")
+        or classifier_has(resource, "gas.consumption")
+    ) and not classifier_has(resource, ".cost")
 
 
 def cost_meter_key(resource) -> str | None:
@@ -101,9 +97,8 @@ async def async_setup_entry(
                     meters["electricity.export"] = reading_sensor
 
             # Tariff/Rate sensors (Not for export)
-            if (
-                is_reading_resource(resource)
-                and not classifier_has(resource, "electricity.export")
+            if is_reading_resource(resource) and not classifier_has(
+                resource, "electricity.export"
             ):
                 coordinator = TariffCoordinator(hass, resource)
                 entities.append(Standing(coordinator, resource, virtual_entity))
@@ -146,13 +141,60 @@ def device_name(resource, virtual_entity) -> str:
     return f"Smart {supply} meter"
 
 
+def daily_reading_value(reading) -> float | None:
+    """Return a numeric value for a reading tuple when possible."""
+    value = reading[1].value
+    if not isinstance(value, Number):
+        return None
+    return float(value)
+
+
+def latest_positive_reading_for_date(readings, target_date) -> float | None:
+    """Return the latest positive reading whose local date matches the target date."""
+    matching_values: list[float] = []
+    for reading in readings:
+        if reading[0].date() != target_date:
+            continue
+
+        value = daily_reading_value(reading)
+        if value is None or value <= 0:
+            continue
+
+        matching_values.append(value)
+
+    if not matching_values:
+        return None
+
+    return matching_values[-1]
+
+
+def latest_positive_reading_before_date(readings, target_date) -> float | None:
+    """Return the latest positive reading whose local date is before the target date."""
+    prior_values: list[float] = []
+    for reading in readings:
+        if reading[0].date() >= target_date:
+            continue
+
+        value = daily_reading_value(reading)
+        if value is None or value <= 0:
+            continue
+
+        prior_values.append(value)
+
+    if not prior_values:
+        return None
+
+    return prior_values[-1]
+
+
 async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
-    """Get daily reading with fallback and gap handling."""
+    """Get the current local-day reading, falling back to the latest prior day with data."""
     v = lastValue
     now = datetime.now()
-    
+
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = now.replace(second=0, microsecond=0)
+    today_date = today_start.date()
 
     # Wake up DCC
     try:
@@ -165,26 +207,18 @@ async def daily_data(hass: HomeAssistant, resource, lastValue) -> float:
         today_readings = await hass.async_add_executor_job(
             resource.get_readings, today_start, today_end, "P1D", "sum", True
         )
-        
-        today_v = 0.0
-        if today_readings and len(today_readings) > 0:
-            today_v = float(today_readings[0][1].value)
 
-        # Logic: If today is 0.0, look back up to 3 days to find last known total
-        if today_v <= 0.0:
+        today_v = latest_positive_reading_for_date(today_readings, today_date)
+
+        # If there is no positive reading bucket for the current local day, reuse the
+        # latest prior day with data until the API publishes a local-today bucket.
+        if today_v is None:
             search_start = today_start - timedelta(days=3)
             historical = await hass.async_add_executor_job(
                 resource.get_readings, search_start, today_start, "P1D", "sum", True
             )
-
-            if historical:
-                valid_historical = [r for r in historical if float(r[1].value) > 0]
-                if valid_historical:
-                    v = float(valid_historical[-1][1].value)
-                else:
-                    v = lastValue
-            else:
-                v = lastValue
+            historical_v = latest_positive_reading_before_date(historical, today_date)
+            v = historical_v if historical_v is not None else lastValue
         else:
             v = today_v
 
@@ -206,6 +240,7 @@ async def tariff_data(hass: HomeAssistant, resource) -> float:
 
 class Reading(SensorEntity):
     """Sensor object for daily reading."""
+
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_has_entity_name = True
     _attr_name = "reading (today)"
@@ -255,6 +290,7 @@ class Reading(SensorEntity):
 
 class Cost(SensorEntity):
     """Sensor for daily cost."""
+
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_has_entity_name = True
     _attr_name = "Cost (today)"
@@ -297,6 +333,7 @@ class Cost(SensorEntity):
 
 class TariffCoordinator(DataUpdateCoordinator):
     """Data update coordinator for the tariff sensors."""
+
     def __init__(self, hass: HomeAssistant, resource) -> None:
         super().__init__(
             hass,
@@ -334,7 +371,10 @@ class Standing(CoordinatorEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         if self.coordinator.data:
             try:
-                value = float(self.coordinator.data.current_rates.standing_charge.value) / 100
+                value = (
+                    float(self.coordinator.data.current_rates.standing_charge.value)
+                    / 100
+                )
                 self._attr_native_value = round(value, 4)
                 self.async_write_ha_state()
             except Exception:

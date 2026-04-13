@@ -59,7 +59,7 @@ Once you've authenticated, the integration will automatically set up the followi
 - Standing Charge - Current standing charge (GBP)
 - Rate - Current tariff (GBP/kWh)
 
-The usage and cost sensors will still show the previous day's data until shortly after 01:30 to ensure that all of the previous day's data is collected.
+The usage and cost sensors will continue to show the most recent previous day's data until the API returns a value for the current local day. As soon as a valid local-today value is available, the sensors switch to today's data.
 
 The standing charge and rate sensors are disabled by default as they are less commonly used. Before enabling them, ensure the data is visible in the Bright app.
 
