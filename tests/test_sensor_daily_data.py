@@ -136,12 +136,9 @@ class DailyData_Should(unittest.TestCase):
             now,
         )
 
-        value, is_today_value = asyncio.run(
-            self.sensor.daily_data(FakeHass(), resource, 7.5)
-        )
+        value = asyncio.run(self.sensor.daily_data(FakeHass(), resource, 7.5))
 
         self.assertEqual(value, 3.2)
-        self.assertTrue(is_today_value)
 
     def test_daily_data_should_fall_back_to_latest_prior_bucket_when_today_missing(
         self,
@@ -157,12 +154,9 @@ class DailyData_Should(unittest.TestCase):
             now,
         )
 
-        value, is_today_value = asyncio.run(
-            self.sensor.daily_data(FakeHass(), resource, 7.5)
-        )
+        value = asyncio.run(self.sensor.daily_data(FakeHass(), resource, 7.5))
 
         self.assertEqual(value, 12.5)
-        self.assertFalse(is_today_value)
 
     def test_daily_data_should_keep_last_value_when_no_positive_data_exists(self):
         now = datetime.now().replace(second=0, microsecond=0)
@@ -175,80 +169,9 @@ class DailyData_Should(unittest.TestCase):
             now,
         )
 
-        value, is_today_value = asyncio.run(
-            self.sensor.daily_data(FakeHass(), resource, 9.9)
-        )
+        value = asyncio.run(self.sensor.daily_data(FakeHass(), resource, 9.9))
 
         self.assertEqual(value, 9.9)
-        self.assertFalse(is_today_value)
-
-
-class FakeVirtualEntity:
-    """Minimal virtual entity stub."""
-
-    name = None
-
-
-class TransitionHandling_Should(unittest.TestCase):
-    """Transition handling between fallback and local-today values."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.sensor = load_sensor_module()
-
-    def test_reading_async_update_should_accept_lower_today_value_after_fallback(self):
-        values = iter([(12.5, False), (3.2, True)])
-
-        async def fake_daily_data(hass, resource, last_value):
-            return next(values)
-
-        original_daily_data = self.sensor.daily_data
-        self.sensor.daily_data = fake_daily_data
-
-        try:
-            resource = types.SimpleNamespace(
-                id="resource-1", classifier="electricity.consumption"
-            )
-            entity = self.sensor.Reading(FakeHass(), resource, FakeVirtualEntity())
-
-            asyncio.run(entity.async_update())
-            entity.lastUpdate = 0
-            asyncio.run(entity.async_update())
-
-            self.assertEqual(entity._attr_native_value, 3.2)
-            self.assertEqual(entity.lastValue, 3.2)
-        finally:
-            self.sensor.daily_data = original_daily_data
-
-    def test_cost_async_update_should_accept_lower_today_value_after_fallback(self):
-        values = iter([(1250.0, False), (320.0, True)])
-
-        async def fake_daily_data(hass, resource, last_value):
-            return next(values)
-
-        original_daily_data = self.sensor.daily_data
-        self.sensor.daily_data = fake_daily_data
-
-        try:
-            resource = types.SimpleNamespace(
-                id="resource-2", classifier="electricity.consumption.cost"
-            )
-            meter = types.SimpleNamespace(
-                resource=types.SimpleNamespace(
-                    id="meter-1", classifier="electricity.consumption"
-                )
-            )
-            entity = self.sensor.Cost(FakeHass(), resource, FakeVirtualEntity())
-            entity.meter = meter
-
-            asyncio.run(entity.async_update())
-            entity.lastUpdate = 0
-            asyncio.run(entity.async_update())
-
-            self.assertEqual(entity._attr_native_value, 3.2)
-            self.assertEqual(entity.lastValue, 320.0)
-        finally:
-            self.sensor.daily_data = original_daily_data
 
 
 if __name__ == "__main__":
